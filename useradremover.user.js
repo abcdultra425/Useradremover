@@ -525,7 +525,7 @@
                 </label>
                 <label class="field">
                     <span>차단 단어</span>
-                    <textarea name="blockedWord" rows="4" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="enter"></textarea>
+                    <textarea name="blockedWord" rows="4" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="enter" placeholder="arca.live/b/&lt;차단할 채널&gt;/글번호&#10;예: example"></textarea>
                     <small class="hint">광고 링크에 아래 단어가 들어 있으면 그 광고를 차단합니다. 한 줄에 하나씩 입력합니다.</small>
                 </label>
                 <div class="options">
