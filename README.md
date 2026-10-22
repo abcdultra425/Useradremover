@@ -11,3 +11,15 @@ https://raw.githubusercontent.com/abcdultra425/Useradremover/main/useradremover.
 ```
 
 Tampermonkey는 이 주소의 `@version`이 올라가면 같은 주소에서 새 버전을 받아 옵니다.
+
+## 사용
+
+아카라이브 화면 오른쪽 아래, 맨 위·맨 아래 버튼 바로 위에 작은 메뉴 버튼이 있습니다. 누르면 설정 창이 열립니다.
+
+차단 단어는 한 줄에 하나씩 입력합니다. 광고가 아래 형태의 채널로 연결되고, 그 채널 이름에 입력한 단어가 들어 있으면 차단됩니다.
+
+```
+arca.live/b/<차단할 채널>/글번호
+```
+
+예를 들어 광고 링크가 `arca.live/b/example/12345`이면 차단 단어에 `example`을 넣습니다.
