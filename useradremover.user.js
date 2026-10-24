@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         유저 광고 제거
 // @namespace    https://arca.live/
-// @version      1.1.0
+// @version      1.1.1
 // @description  광고 링크에 차단 단어가 있으면 그 광고를 숨기거나 차단 표시로 바꿉니다.
 // @match        https://arca.live/*
 // @updateURL    https://raw.githubusercontent.com/abcdultra425/Useradremover/main/useradremover.user.js
@@ -375,14 +375,41 @@
     shadow.innerHTML = `
         <style>
             :host {
-                position: fixed;
-                inset: 0;
-                z-index: 2147483000;
-                pointer-events: none;
-                color: #1c1c1e;
+                display: contents;
+                --uar-panel: #fff;
+                --uar-text: #1c1c1e;
+                --uar-muted: #636366;
+                --uar-line: rgba(60, 60, 67, 0.28);
+                --uar-option-line: rgba(60, 60, 67, 0.16);
+                --uar-field: #fff;
+                --uar-close: #3a3a3c;
+                color: var(--uar-text);
+                color-scheme: light;
                 font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-                letter-spacing: 0;
+                letter-spacing: normal;
                 -webkit-font-smoothing: antialiased;
+            }
+
+            :host(.theme-dark) {
+                --uar-panel: #222;
+                --uar-text: #d3d3d3;
+                --uar-muted: #9a9a9e;
+                --uar-line: rgba(255, 255, 255, 0.16);
+                --uar-option-line: rgba(255, 255, 255, 0.1);
+                --uar-field: #111;
+                --uar-close: #d3d3d3;
+                color-scheme: dark;
+            }
+
+            :host(.theme-black) {
+                --uar-panel: #000;
+                --uar-text: #ccc;
+                --uar-muted: #8d8d8d;
+                --uar-line: rgba(255, 255, 255, 0.18);
+                --uar-option-line: rgba(255, 255, 255, 0.12);
+                --uar-field: #161616;
+                --uar-close: #ccc;
+                color-scheme: dark;
             }
 
             button, textarea, select {
@@ -390,7 +417,8 @@
             }
 
             .launcher {
-                position: absolute;
+                position: fixed;
+                z-index: 2147483000;
                 right: var(--uar-right, 12px);
                 bottom: var(--uar-bottom, calc(12px + env(safe-area-inset-bottom, 0px)));
                 width: 40px;
@@ -422,7 +450,8 @@
             }
 
             .backdrop {
-                position: absolute;
+                position: fixed;
+                z-index: 2147483000;
                 inset: 0;
                 display: flex;
                 justify-content: center;
@@ -441,14 +470,13 @@
 
             .panel {
                 width: min(100%, 300px);
-                max-height: calc(100vh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
                 margin-top: 10vh;
                 padding: 12px;
-                border: 1px solid rgba(0, 0, 0, 0.08);
+                border: 1px solid var(--uar-line);
                 border-radius: 12px;
-                background: #fff;
+                background: var(--uar-panel);
+                color: var(--uar-text);
                 box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04), 0 12px 28px rgba(0, 0, 0, 0.18);
-                overflow: auto;
             }
 
             .head {
@@ -476,7 +504,7 @@
                 border: 0;
                 border-radius: 8px;
                 background: transparent;
-                color: #3a3a3c;
+                color: var(--uar-close);
                 cursor: pointer;
             }
 
@@ -503,13 +531,18 @@
                 height: 88px;
                 margin: 0;
                 padding: 6px 8px;
-                border: 1px solid rgba(60, 60, 67, 0.28);
+                border: 1px solid var(--uar-line);
                 border-radius: 8px;
-                background: #fff;
-                color: #1c1c1e;
+                background: var(--uar-field);
+                color: var(--uar-text);
                 font-size: 16px;
-                line-height: 1.35;
+                line-height: normal;
+                letter-spacing: normal;
                 resize: vertical;
+            }
+
+            textarea::placeholder {
+                color: var(--uar-muted);
             }
 
             textarea:focus,
@@ -525,15 +558,15 @@
                 height: 34px;
                 margin: 0;
                 padding: 0 8px;
-                border: 1px solid rgba(60, 60, 67, 0.28);
+                border: 1px solid var(--uar-line);
                 border-radius: 8px;
-                background: #fff;
-                color: #1c1c1e;
+                background: var(--uar-field);
+                color: var(--uar-text);
                 font-size: 16px;
             }
 
             .hint, .option small {
-                color: #636366;
+                color: var(--uar-muted);
                 font-size: 12px;
                 line-height: 1.4;
                 text-wrap: pretty;
@@ -549,7 +582,7 @@
                 align-items: flex-start;
                 gap: 8px;
                 padding: 7px 8px;
-                border: 1px solid rgba(60, 60, 67, 0.16);
+                border: 1px solid var(--uar-option-line);
                 border-radius: 8px;
                 cursor: pointer;
             }
@@ -671,15 +704,15 @@
         const nav = document.querySelector('.nav-control');
         const rect = nav?.getBoundingClientRect();
         if (!rect || rect.width < 1 || rect.height < 1) {
-            host.style.removeProperty('--uar-right');
-            host.style.removeProperty('--uar-bottom');
+            launcher.style.right = '12px';
+            launcher.style.bottom = 'calc(12px + env(safe-area-inset-bottom, 0px))';
             return;
         }
 
         const right = Math.max(12, window.innerWidth - rect.right);
         const bottom = Math.max(12, window.innerHeight - rect.top + 10);
-        host.style.setProperty('--uar-right', `${right}px`);
-        host.style.setProperty('--uar-bottom', `${bottom}px`);
+        launcher.style.right = `${right}px`;
+        launcher.style.bottom = `${bottom}px`;
     }
 
     launcher.addEventListener('click', openModal);
@@ -740,6 +773,16 @@
     const observer = new MutationObserver(scheduleApply);
     observer.observe(document.documentElement, { childList: true, subtree: true });
 
+    function syncTheme() {
+        const root = document.documentElement;
+        host.classList.toggle('theme-dark', root.classList.contains('theme-dark'));
+        host.classList.toggle('theme-black', root.classList.contains('theme-black'));
+    }
+
+    const themeObserver = new MutationObserver(syncTheme);
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
+    syncTheme();
     document.documentElement.appendChild(host);
     applyFilter();
     placeButton();
