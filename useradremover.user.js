@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         유저 광고 제거
 // @namespace    https://arca.live/
-// @version      1.0.0
+// @version      1.1.0
 // @description  광고 링크에 차단 단어가 있으면 그 광고를 숨기거나 차단 표시로 바꿉니다.
 // @match        https://arca.live/*
 // @updateURL    https://raw.githubusercontent.com/abcdultra425/Useradremover/main/useradremover.user.js
@@ -26,6 +26,7 @@
         blockedWord: '',
         filterAllPosts: false,
         hideAllAds: false,
+        hideHomeChannels: false,
     };
 
     const settings = loadSettings();
@@ -37,6 +38,7 @@
             blockedWord: DEFAULTS.blockedWord,
             filterAllPosts: DEFAULTS.filterAllPosts,
             hideAllAds: DEFAULTS.hideAllAds,
+            hideHomeChannels: DEFAULTS.hideHomeChannels,
         };
 
         try {
@@ -48,6 +50,7 @@
             if (typeof parsed.blockedWord === 'string') next.blockedWord = parsed.blockedWord;
             if (typeof parsed.filterAllPosts === 'boolean') next.filterAllPosts = parsed.filterAllPosts;
             if (typeof parsed.hideAllAds === 'boolean') next.hideAllAds = parsed.hideAllAds;
+            if (typeof parsed.hideHomeChannels === 'boolean') next.hideHomeChannels = parsed.hideHomeChannels;
         } catch (_) {
             // 저장소가 막혀 있으면 이번 페이지만 기본값으로 동작한다.
         }
@@ -63,6 +66,7 @@
                 blockedWord: settings.blockedWord,
                 filterAllPosts: settings.filterAllPosts,
                 hideAllAds: settings.hideAllAds,
+                hideHomeChannels: settings.hideHomeChannels,
             }));
         } catch (_) {
             // 저장에 실패해도 현재 페이지의 필터는 유지한다.
@@ -105,10 +109,57 @@
         return links;
     }
 
+    function plainText(node) {
+        return (node?.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
     function rowTitle(row) {
         const title = row.querySelector?.('.vcol.col-title, .col-title');
-        const source = title || row;
-        return (source.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        return plainText(title || row);
+    }
+
+    function postTitleOf(row) {
+        return plainText(row.querySelector?.('.title'));
+    }
+
+    // 종합 속보 행의 주소는 항상 /b/breaking/글번호 다.
+    // 실제 채널은 제목 앞 첫 배지에만 있고, 그 뒤 배지는 말머리라 쓰지 않는다.
+    function breakingChannelOf(row) {
+        const paths = [pathnameOf(row), ...rowLinks(row).map((link) => pathnameOf(link))];
+        if (!paths.some((path) => boardSlug(path, true) === 'breaking')) return '';
+        return plainText(row.querySelector?.('.badges .badge'));
+    }
+
+    function slugForChannelName(name) {
+        if (!name) return '';
+
+        for (const link of document.querySelectorAll('a.dropdown-item[href^="/b/"]')) {
+            const label = plainText(link).replace(/\s*채널$/, '');
+            if (label !== name) continue;
+            const slug = boardSlug(pathnameOf(link), false);
+            if (slug && slug !== 'breaking') return slug;
+        }
+
+        return '';
+    }
+
+    function channelNameHit(name, words) {
+        if (!name) return false;
+        if (textHasWord(name, words)) return true;
+        const slug = slugForChannelName(name);
+        return Boolean(slug) && textHasWord(slug, words);
+    }
+
+    function isHomeChannelBlock(row) {
+        return Boolean(row.matches?.('.summary-item-wrap'));
+    }
+
+    function homeChannelHit(row, words) {
+        const title = row.querySelector?.('a.item-title');
+        if (!title || words.length === 0) return false;
+        const slug = boardSlug(pathnameOf(title), false);
+        const name = plainText(title).replace(/\s*채널$/, '');
+        return textHasWord(slug, words) || textHasWord(name, words);
     }
 
     function blockedWords() {
@@ -133,6 +184,8 @@
             ownPath: pathnameOf(row),
             linkPaths: rowLinks(row).map((link) => pathnameOf(link)),
             title: rowTitle(row),
+            postTitle: postTitleOf(row),
+            breakingChannel: breakingChannelOf(row),
         };
     }
 
@@ -142,19 +195,30 @@
 
         const info = signals(row);
 
+        const onBreaking = [info.ownPath, ...info.linkPaths]
+            .some((path) => boardSlug(path, true) === 'breaking');
+
         // 기본값은 기존 스크립트와 같다. 상단 유저 광고에 쓰이는 column 행만,
         // 글 주소(/b/채널/글번호)의 채널에 차단 단어가 있을 때 걸린다.
+        // 속보 주소의 breaking 은 채널이 아니므로 여기서 보지 않는다.
         if (!settings.filterAllPosts) {
-            return row.matches?.('a.vrow.column')
+            return !onBreaking
+                && row.matches?.('a.vrow.column')
                 && textHasWord(boardSlug(info.ownPath, true), words);
         }
 
         // 실시간·베스트 목록은 글 주소가 /b/live/글번호 로 바뀌고,
         // 실제 채널은 행 안 배지 주소(/b/채널)에 남아 있다.
         for (const path of info.linkPaths) {
-            if (textHasWord(boardSlug(path, false), words)) return true;
+            const slug = boardSlug(path, false);
+            if (!slug || slug === 'breaking') continue;
+            if (textHasWord(slug, words)) return true;
         }
 
+        // 종합 속보는 채널 주소가 없다. 전역 적용이면 제목 앞 배지의 채널명을 본다.
+        if (channelNameHit(info.breakingChannel, words)) return true;
+
+        if (onBreaking) return textHasWord(info.postTitle, words);
         return textHasWord(info.title, words);
     }
 
@@ -175,6 +239,9 @@
         const parts = [settings.hideAllAds ? 'a.vrow.column' : 'a.vrow.column[href]'];
         if (settings.filterAllPosts) {
             parts.push('.article-list .vrow', '.included-article-list .vrow');
+        }
+        if (settings.hideHomeChannels) {
+            parts.push('.summary-item-wrap');
         }
         const nodes = new Set(document.querySelectorAll(parts.join(', ')));
 
@@ -198,6 +265,8 @@
             ownPath: pathnameOf(row),
             linkPaths: rowLinks(row).map((link) => pathnameOf(link)),
             title: rowTitle(row),
+            postTitle: postTitleOf(row),
+            breakingChannel: breakingChannelOf(row),
         });
     }
 
@@ -256,7 +325,15 @@
             return;
         }
 
+        const words = blockedWords();
+
         for (const row of candidates()) {
+            if (isHomeChannelBlock(row)) {
+                if (settings.hideHomeChannels && homeChannelHit(row, words)) hide(row);
+                else release(row);
+                continue;
+            }
+
             if (settings.hideAllAds && isAdRow(row)) {
                 hide(row);
                 continue;
@@ -364,12 +441,14 @@
 
             .panel {
                 width: min(100%, 300px);
+                max-height: calc(100vh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
                 margin-top: 10vh;
                 padding: 12px;
                 border: 1px solid rgba(0, 0, 0, 0.08);
                 border-radius: 12px;
                 background: #fff;
                 box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04), 0 12px 28px rgba(0, 0, 0, 0.18);
+                overflow: auto;
             }
 
             .head {
@@ -540,7 +619,14 @@
                         <input type="checkbox" name="filterAllPosts">
                         <span>
                             <strong>게시글 전역에 적용</strong>
-                            <small>목록의 글도 차단합니다. 채널 주소와 제목을 함께 확인합니다.</small>
+                            <small>목록의 글도 차단합니다. 채널 주소와 제목을 확인하고, 종합 속보는 제목 앞 배지의 채널 이름을 확인합니다.</small>
+                        </span>
+                    </label>
+                    <label class="option">
+                        <input type="checkbox" name="hideHomeChannels">
+                        <span>
+                            <strong>홈 채널 목록 차단</strong>
+                            <small>아카라이브 홈에서 채널 주소나 채널 이름에 차단 단어가 있으면, 그 채널 묶음과 최근 글을 함께 숨깁니다.</small>
                         </span>
                     </label>
                 </div>
@@ -556,6 +642,7 @@
     const actionInput = shadow.querySelector('select[name="action"]');
     const allPostsInput = shadow.querySelector('input[name="filterAllPosts"]');
     const hideAllAdsInput = shadow.querySelector('input[name="hideAllAds"]');
+    const homeChannelsInput = shadow.querySelector('input[name="hideHomeChannels"]');
     const closeButton = shadow.querySelector('.close');
 
     wordInput.value = settings.blockedWord;
@@ -563,6 +650,7 @@
     actionInput.value = settings.action;
     allPostsInput.checked = settings.filterAllPosts;
     hideAllAdsInput.checked = settings.hideAllAds;
+    homeChannelsInput.checked = settings.hideHomeChannels;
 
     let lastFocus = null;
 
@@ -628,6 +716,12 @@
 
     allPostsInput.addEventListener('change', () => {
         settings.filterAllPosts = allPostsInput.checked;
+        saveSettings();
+        applyFilter();
+    });
+
+    homeChannelsInput.addEventListener('change', () => {
+        settings.hideHomeChannels = homeChannelsInput.checked;
         saveSettings();
         applyFilter();
     });
